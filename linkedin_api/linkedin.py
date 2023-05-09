@@ -248,6 +248,7 @@ class Linkedin(object):
                 break
 
             self.logger.debug(f"results grew to {len(results)}")
+            self.logger.debug(f"results {results}")
 
         return results
 
@@ -716,6 +717,9 @@ class Linkedin(object):
         for item in projects:
             del item["entityUrn"]
         profile["projects"] = projects
+
+        # massage urn_id
+        profile['urn_id'] = profile['entityUrn'].replace('urn:li:fs_profile:', '')
 
         return profile
 
