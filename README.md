@@ -3,6 +3,9 @@
 <h3 align="center">Sponsors</h3>
 
 <p align="center">
+    <a href="https://prospeo.io/api/linkedin-email-finder" target="_blank">
+    <img height="45px" style="margin-right:15px" src="https://raw.githubusercontent.com/tomquirk/linkedin-api/master/assets/logos/prospeo.png" alt="Prospeo">
+  </a>
   <a href="https://lix-it.com/pages/linkedin-api?utm_campaign=influencer%20marketing&utm_source=github&utm_medium=social&utm_content=tomquirk" target="_blank">
     <img height="45px" style="margin-right:15px" src="https://raw.githubusercontent.com/tomquirk/linkedin-api/master/assets/logos/lix.png" alt="Lix">
   </a>
@@ -15,6 +18,7 @@
   <a href="https://www.piloterr.com/?ref=tomquirk" target="_blank">
     <img height="45px" src="https://raw.githubusercontent.com/tomquirk/linkedin-api/master/assets/logos/piloterr.png" alt="piloterr">
   </a>
+    <img height="45px" src="https://raw.githubusercontent.com/tomquirk/linkedin-api/master/assets/logos/enrich.png" alt="enrich">
 </p>
 
 <h5 align="center"><a href="https://github.com/sponsors/tomquirk/sponsorships?sponsor=tomquirk&tier_id=96653&preview=false" target="_blank">Become a sponsor</a></h5>
@@ -74,6 +78,23 @@ Scrape public LinkedIn profile data at scale with [Proxycurl APIs](https://nubel
 - Tons of data points returned per profile
 
 Built for developers, by developers.
+
+> End sponsored section
+
+> This is a sponsored section
+
+Extract data and find verified emails in real-time with [Prospeo LinkedIn Email Finder API](https://prospeo.io/api/linkedin-email-finder).
+
+Submit a LinkedIn profile URL to our API and get:
+
+- Profile data extracted in real-time
+- Company data of the profile
+- Verified work email of the profile
+- Exclusive data points (gender, cleaned country code, time zone...)
+- One do-it-all request
+- Stable API, tested under high load
+
+Try it with 75 profiles. [Get your FREE API key now](https://prospeo.io/api/linkedin-email-finder).
 
 > End sponsored section
 
@@ -219,6 +240,6 @@ It could be possible to document (and implement a nice interface for) this query
 
 ### Releasing a new version
 
-1. Bump __version__ in `__init__.py`
+1. Bump `__version__` in `__init__.py`
 1. `python3 setup.py sdist bdist_wheel`
 1. `python3 -m twine upload dist/*`

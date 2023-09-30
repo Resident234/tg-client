@@ -14,6 +14,7 @@ from linkedin_api.client import Client
 from linkedin_api.utils.helpers import (
     append_update_post_field_to_posts_list,
     get_id_from_urn,
+    get_urn_from_raw_update,
     get_list_posts_sorted_without_promoted,
     get_update_author_name,
     get_update_author_profile,
@@ -223,19 +224,59 @@ class Linkedin(object):
             }
             default_params.update(params)
 
+            keywords = (
+                f"keywords:{default_params['keywords']},"
+                if "keywords" in default_params
+                else ""
+            )
+
             res = self._fetch(
-                f"/search/blended?{urlencode(default_params, safe='(),')}",
-                headers={"accept": "application/vnd.linkedin.normalized+json+2.1"},
+                f"/graphql?variables=(start:{default_params['start']},origin:{default_params['origin']},"
+                f"query:("
+                f"{keywords}"
+                f"flagshipSearchIntent:SEARCH_SRP,"
+                f"queryParameters:{default_params['filters']},"
+                f"includeFiltersInResponse:false))&=&queryId=voyagerSearchDashClusters"
+                f".b0928897b71bd00a5a7291755dcd64f0"
             )
             data = res.json()
 
-            new_elements = []
-            elements = data.get("data", {}).get("elements", [])
+            data_clusters = data.get("data", []).get("searchDashClustersByAll", [])
 
-            for element in elements:
-                new_elements.extend(element.get("elements", {}))
-                # not entirely sure what extendedElements generally refers to - keyword search gives back a single job?
-                # new_elements.extend(data["data"]["elements"][i]["extendedElements"])
+            if not data_clusters:
+                return []
+
+            if (
+                not data_clusters.get("_type", [])
+                == "com.linkedin.restli.common.CollectionResponse"
+            ):
+                return []
+
+            new_elements = []
+            for it in data_clusters.get("elements", []):
+                if (
+                    not it.get("_type", [])
+                    == "com.linkedin.voyager.dash.search.SearchClusterViewModel"
+                ):
+                    continue
+
+                for el in it.get("items", []):
+                    if (
+                        not el.get("_type", [])
+                        == "com.linkedin.voyager.dash.search.SearchItem"
+                    ):
+                        continue
+
+                    e = el.get("item", []).get("entityResult", [])
+                    if not e:
+                        continue
+                    if (
+                        not e.get("_type", [])
+                        == "com.linkedin.voyager.dash.search.EntityResultViewModel"
+                    ):
+                        continue
+                    new_elements.append(e)
+
             results.extend(new_elements)
 
             # break the loop if we're done searching
@@ -320,41 +361,50 @@ class Linkedin(object):
         :return: List of profiles (minimal data only)
         :rtype: list
         """
-        filters = ["resultType->PEOPLE"]
+        filters = ["(key:resultType,value:List(PEOPLE))"]
         if connection_of:
-            filters.append(f"connectionOf->{connection_of}")
+            filters.append(f"(key:connectionOf,value:List({connection_of}))")
         if network_depths:
-            filters.append(f'network->{"|".join(network_depths)}')
+            stringify = " | ".join(network_depths)
+            filters.append(f"(key:network,value:List({stringify}))")
         elif network_depth:
-            filters.append(f"network->{network_depth}")
+            filters.append(f"(key:network,value:List({network_depth}))")
         if regions:
-            filters.append(f'geoUrn->{"|".join(regions)}')
+            stringify = " | ".join(regions)
+            filters.append(f"(key:geoUrn,value:List({stringify}))")
         if industries:
-            filters.append(f'industry->{"|".join(industries)}')
+            stringify = " | ".join(industries)
+            filters.append(f"(key:industry,value:List({stringify}))")
         if current_company:
-            filters.append(f'currentCompany->{"|".join(current_company)}')
+            stringify = " | ".join(current_company)
+            filters.append(f"(key:currentCompany,value:List({stringify}))")
         if past_companies:
-            filters.append(f'pastCompany->{"|".join(past_companies)}')
+            stringify = " | ".join(past_companies)
+            filters.append(f"(key:pastCompany,value:List({stringify}))")
         if profile_languages:
-            filters.append(f'profileLanguage->{"|".join(profile_languages)}')
+            stringify = " | ".join(profile_languages)
+            filters.append(f"(key:profileLanguage,value:List({stringify}))")
         if nonprofit_interests:
-            filters.append(f'nonprofitInterest->{"|".join(nonprofit_interests)}')
+            stringify = " | ".join(nonprofit_interests)
+            filters.append(f"(key:nonprofitInterest,value:List({stringify}))")
         if schools:
-            filters.append(f'schools->{"|".join(schools)}')
+            stringify = " | ".join(schools)
+            filters.append(f"(key:schools,value:List({stringify}))")
         if service_categories:
-            filters.append(f'serviceCategory->{"|".join(service_categories)}')
+            stringify = " | ".join(service_categories)
+            filters.append(f"(key:serviceCategory,value:List({stringify}))")
         # `Keywords` filter
         keyword_title = keyword_title if keyword_title else title
         if keyword_first_name:
-            filters.append(f"firstName->{keyword_first_name}")
+            filters.append(f"(key:firstName,value:List({keyword_first_name}))")
         if keyword_last_name:
-            filters.append(f"lastName->{keyword_last_name}")
+            filters.append(f"(key:lastName,value:List({keyword_last_name}))")
         if keyword_title:
-            filters.append(f"title->{keyword_title}")
+            filters.append(f"(key:title,value:List({keyword_title}))")
         if keyword_company:
-            filters.append(f"company->{keyword_company}")
+            filters.append(f"(key:company,value:List({keyword_company}))")
         if keyword_school:
-            filters.append(f"school->{keyword_school}")
+            filters.append(f"(key:school,value:List({keyword_school}))")
 
         params = {"filters": "List({})".format(",".join(filters))}
 
@@ -365,17 +415,25 @@ class Linkedin(object):
 
         results = []
         for item in data:
-            if not include_private_profiles and "publicIdentifier" not in item:
+            if (
+                not include_private_profiles
+                and (item.get("entityCustomTrackingInfo") or {}).get(
+                    "memberDistance", None
+                )
+                == "OUT_OF_NETWORK"
+            ):
                 continue
             results.append(
                 {
-                    "urn_id": get_id_from_urn(item.get("targetUrn")),
-                    "distance": item.get("memberDistance", {}).get("value"),
-                    "public_id": item.get("publicIdentifier"),
-                    "tracking_id": get_id_from_urn(item.get("trackingUrn")),
-                    "jobtitle": item.get("headline", {}).get("text"),
-                    "location": item.get("subline", {}).get("text"),
-                    "name": item.get("title", {}).get("text"),
+                    "urn_id": get_id_from_urn(
+                        get_urn_from_raw_update(item.get("entityUrn", None))
+                    ),
+                    "distance": (item.get("entityCustomTrackingInfo") or {}).get(
+                        "memberDistance", None
+                    ),
+                    "jobtitle": (item.get("primarySubtitle") or {}).get("text", None),
+                    "location": (item.get("secondarySubtitle") or {}).get("text", None),
+                    "name": (item.get("title") or {}).get("text", None),
                 }
             )
 
@@ -390,7 +448,7 @@ class Linkedin(object):
         :return: List of companies
         :rtype: list
         """
-        filters = ["resultType->COMPANIES"]
+        filters = ["(key:resultType,value:List(COMPANIES))"]
 
         params = {
             "filters": "List({})".format(",".join(filters)),
@@ -404,15 +462,14 @@ class Linkedin(object):
 
         results = []
         for item in data:
-            if item.get("type") != "COMPANY":
+            if "company" not in item.get("trackingUrn"):
                 continue
             results.append(
                 {
-                    "urn": item.get("targetUrn"),
-                    "urn_id": get_id_from_urn(item.get("targetUrn")),
-                    "name": item.get("title", {}).get("text"),
-                    "headline": item.get("headline", {}).get("text"),
-                    "subline": item.get("subline", {}).get("text"),
+                    "urn_id": get_id_from_urn(item.get("trackingUrn", None)),
+                    "name": (item.get("title") or {}).get("text", None),
+                    "headline": (item.get("primarySubtitle") or {}).get("text", None),
+                    "subline": (item.get("secondarySubtitle") or {}).get("text", None),
                 }
             )
 
@@ -427,7 +484,7 @@ class Linkedin(object):
         job_title=None,
         industries=None,
         location_name=None,
-        remote=False,
+        remote=None,
         listed_at=24 * 60 * 60,
         distance=None,
         limit=-1,
@@ -450,8 +507,8 @@ class Linkedin(object):
         :type industries: list, optional
         :param location_name: Name of the location to search within. Example: "Kyiv City, Ukraine"
         :type location_name: str, optional
-        :param remote: Whether to search only for remote jobs. Defaults to False.
-        :type remote: boolean, optional
+        :param remote: Filter for remote jobs, onsite or hybrid. onsite:"1", remote:"2", hybrid:"3"
+        :type remote: list, optional
         :param listed_at: maximum number of seconds passed since job posting. 86400 will filter job postings posted in last 24 hours.
         :type listed_at: int/str, optional. Default value is equal to 24 hours.
         :param distance: maximum distance from location in miles
@@ -467,68 +524,84 @@ class Linkedin(object):
         if limit is None:
             limit = -1
 
-        params = {}
+        query = {"origin":"JOB_SEARCH_PAGE_QUERY_EXPANSION"}
         if keywords:
-            params["keywords"] = keywords
-
-        filters = ["resultType->JOBS"]
-        if companies:
-            filters.append(f'company->{"|".join(companies)}')
-        if experience:
-            filters.append(f'experience->{"|".join(experience)}')
-        if job_type:
-            filters.append(f'jobType->{"|".join(job_type)}')
-        if job_title:
-            filters.append(f'title->{"|".join(job_title)}')
-        if industries:
-            filters.append(f'industry->{"|".join(industries)}')
+            query["keywords"] = "KEYWORD_PLACEHOLDER"
         if location_name:
-            filters.append(f"locationFallback->{location_name}")
-        if remote:
-            filters.append(f"workRemoteAllowed->{remote}")
-        if distance:
-            filters.append(f"distance->{distance}")
-        filters.append(f"timePostedRange->r{listed_at}")
-        # add optional kwargs to a filter
-        for name, value in kwargs.items():
-            if type(value) in (list, tuple):
-                filters.append(f'{name}->{"|".join(value)}')
-            else:
-                filters.append(f"{name}->{value}")
+            query["locationFallback"] = "LOCATION_PLACEHOLDER"
 
+        # In selectedFilters()
+        query['selectedFilters'] = {}
+        if companies:
+            query['selectedFilters']['company'] = f"List({','.join(companies)})"
+        if experience:
+            query['selectedFilters']['experience'] = f"List({','.join(experience)})"
+        if job_type:
+            query['selectedFilters']['jobType'] = f"List({','.join(job_type)})"
+        if job_title:
+            query['selectedFilters']['title'] = f"List({','.join(job_title)})"
+        if industries:
+            query['selectedFilters']['industry'] = f"List({','.join(industries)})"
+        if distance:
+            query['selectedFilters']['distance'] = f"List({distance})"
+        if remote:
+            query['selectedFilters']['workplaceType'] = f"List({','.join(remote)})"
+
+        query['selectedFilters']['timePostedRange'] = f"List(r{listed_at})"
+        query["spellCorrectionEnabled"] = "true"
+
+        # Query structure:
+        # "(
+        #    origin:JOB_SEARCH_PAGE_QUERY_EXPANSION,
+        #    keywords:marketing%20manager,
+        #    locationFallback:germany,
+        #    selectedFilters:(
+        #        distance:List(25),
+        #        company:List(163253),
+        #        salaryBucketV2:List(5),
+        #        timePostedRange:List(r2592000),
+        #        workplaceType:List(1)
+        #    ),
+        #    spellCorrectionEnabled:true
+        #  )"
+
+        query = str(query).replace(" ","") \
+                    .replace("'","") \
+                    .replace("KEYWORD_PLACEHOLDER", keywords or "") \
+                    .replace("LOCATION_PLACEHOLDER", location_name or "") \
+                    .replace("{","(") \
+                    .replace("}",")")
         results = []
         while True:
             # when we're close to the limit, only fetch what we need to
             if limit > -1 and limit - len(results) < count:
                 count = limit - len(results)
             default_params = {
-                "decorationId": "com.linkedin.voyager.deco.jserp.WebJobSearchHitLite-14",
+                "decorationId": "com.linkedin.voyager.dash.deco.jobs.search.JobSearchCardsCollection-174",
                 "count": count,
-                "filters": f"List({','.join(filters)})",
-                "origin": "JOB_SEARCH_RESULTS_PAGE",
-                "q": "jserpFilters",
+                "q": "jobSearch",
+                "query": query,
                 "start": len(results) + offset,
-                "queryContext": "List(primaryHitType->JOBS,spellCorrectionEnabled->true)",
             }
-            default_params.update(params)
 
             res = self._fetch(
-                f"/search/hits?{urlencode(default_params, safe='(),')}",
+                f"/voyagerJobsDashJobCards?{urlencode(default_params, safe='(),:')}",
                 headers={"accept": "application/vnd.linkedin.normalized+json+2.1"},
             )
             data = res.json()
 
             elements = data.get("included", [])
-            results.extend(
-                [
-                    i
-                    for i in elements
-                    if i["$type"] == "com.linkedin.voyager.jobs.JobPosting"
-                ]
-            )
-            # break the loop if we're done searching
+            new_data = [
+                i
+                for i in elements
+                if i["$type"] == 'com.linkedin.voyager.dash.jobs.JobPosting'
+            ]
+            # break the loop if we're done searching or no results returned
+            if not new_data:
+                break
             # NOTE: we could also check for the `total` returned in the response.
             # This is in data["data"]["paging"]["total"]
+            results.extend(new_data)
             if (
                 (-1 < limit <= len(results))  # if our results exceed set limit
                 or len(results) / count >= Linkedin._MAX_REPEATED_REQUESTS
@@ -747,10 +820,10 @@ class Linkedin(object):
         :return: List of company update objects
         :rtype: list
         """
-        
+
         if results is None:
             results = []
-        
+
         params = {
             "companyUniversalName": {public_id or urn_id},
             "q": "companyFeedByUniversalName",
@@ -796,10 +869,10 @@ class Linkedin(object):
         :return: List of profile update objects
         :rtype: list
         """
-        
+
         if results is None:
             results = []
-            
+
         params = {
             "profileId": {public_id or urn_id},
             "q": "memberShareFeed",
@@ -1371,7 +1444,6 @@ class Linkedin(object):
         l_urns = []
 
         while True:
-
             # when we're close to the limit, only fetch what we need to
             if limit > -1 and limit - len(l_urns) < count:
                 count = limit - len(l_urns)
