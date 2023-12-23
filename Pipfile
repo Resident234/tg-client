@@ -10,9 +10,7 @@ sphinx = "*"
 sphinx-rtd-theme = "*"
 
 [packages]
-requests = "*"
-beautifulsoup4 = "*"
-lxml = "*"
+telethon = "*"
 
 [requires]
 python_version = "3.7"
