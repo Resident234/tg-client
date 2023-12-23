@@ -10,9 +10,23 @@ from telethon.errors import SessionPasswordNeededError
 from telethon.network import ConnectionTcpAbridged
 from telethon.utils import get_display_name
 
-"""
-todo если есть облачный пароль, то либа тупит, когда законтирьючу на хабр еще коммент написать https://habr.com/ru/articles/425151/
-"""
+
+def sprint(string, *args, **kwargs):
+    """Safe Print (handle UnicodeEncodeErrors on some terminals)"""
+    try:
+        print(string, *args, **kwargs)
+    except UnicodeEncodeError:
+        string = string.encode('utf-8', errors='ignore') \
+            .decode('ascii', errors='ignore')
+        print(string, *args, **kwargs)
+
+
+def print_title(title):
+    """Helper function to print titles to the console more nicely"""
+    sprint('\n')
+    sprint('=={}=='.format('=' * len(title)))
+    sprint('= {} ='.format(title))
+    sprint('=={}=='.format('=' * len(title)))
 
 
 def bytes_to_string(byte_count):
@@ -390,8 +404,10 @@ async def main():
         SESSION = 'tg'
         client = InteractiveTelegramClient(SESSION, API_ID, API_HASH)
         await client.init()
-        await client.run()
+
+        await client.send_document(path='H:\s\Work_tg\client\DSC00616.JPG', entity='me')
+        # await client.run()
 
 
 if __name__ == '__main__':
-    asyncio.run()
+    asyncio.run(main())
